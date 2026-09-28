@@ -1,8 +1,7 @@
 //! Build Your Own X - Redis!
 
-#![allow(unused_imports)]
 use anyhow::{Context, Result};
-use std::net::TcpListener;
+use std::{io::Write, net::TcpListener};
 
 fn main() -> Result<()> {
     println!("Logs from your program will appear here!");
@@ -10,8 +9,10 @@ fn main() -> Result<()> {
     let listener = TcpListener::bind("127.0.0.1:6379").context("Could not bind on 6379")?;
     for stream in listener.incoming() {
         match stream {
-            Ok(_stream) => {
-                println!("accepted new connection");
+            Ok(mut stream) => {
+                stream
+                    .write_all(b"+PONG\r\n")
+                    .context("Could not send PONG")?;
             }
             Err(e) => {
                 println!("error: {}", e);
