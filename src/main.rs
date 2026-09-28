@@ -1,6 +1,7 @@
 //! Build Your Own X - Redis!
 
 use anyhow::{Context, Result};
+use std::io::Read;
 use std::{io::Write, net::TcpListener};
 
 fn main() -> Result<()> {
@@ -10,9 +11,18 @@ fn main() -> Result<()> {
     for stream in listener.incoming() {
         match stream {
             Ok(mut stream) => {
-                stream
-                    .write_all(b"+PONG\r\n")
-                    .context("Could not send PONG")?;
+                let mut buf = [0; 512];
+                loop {
+                    let bytes_read = stream
+                        .read(&mut buf)
+                        .context(format!("Could not read from {}", stream.peer_addr()?))?;
+                    if bytes_read == 0 {
+                        break;
+                    }
+                    stream
+                        .write_all(b"+PONG\r\n")
+                        .context("Could not send PONG")?;
+                }
             }
             Err(e) => {
                 println!("error: {}", e);
