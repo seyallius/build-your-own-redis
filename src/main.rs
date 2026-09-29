@@ -7,6 +7,10 @@ use std::{
     thread,
 };
 
+mod resp;
+
+// ------------------------------------------- <Main> ------------------------------------------- //
+
 fn main() -> Result<()> {
     println!("Logs from your program will appear here!");
 
@@ -35,15 +39,23 @@ fn handle_client(mut stream: TcpStream) -> Result<()> {
     println!("connection accepted for: {}", peer.ip().to_canonical());
 
     const READ_BUF_SIZE: usize = 512;
-    let mut buf = [0; READ_BUF_SIZE];
     const EOF: usize = 0;
+    let mut buffer: Vec<u8> = Vec::new(); // accumulates across reads
+    let mut chunk = [0u8; READ_BUF_SIZE]; // scratch space for one read
+
     loop {
         let bytes_read = stream
-            .read(&mut buf)
+            .read(&mut chunk)
             .with_context(|| format!("Could not read from {peer}"))?;
         if bytes_read == EOF {
             break;
         }
+
+        buffer.extend_from_slice(&chunk[..bytes_read]);
+
+        if let Some((value, _read_bytes)) = resp::parse(&buffer)? {
+            
+        };
 
         stream
             .write_all(b"+PONG\r\n")
