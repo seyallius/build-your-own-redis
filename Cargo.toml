@@ -1,7 +1,7 @@
 [package]
-name = "codecrafters-redis"
+name = "build-your-own-redis"
 version = "0.1.0"
-authors = ["Codecrafters <hello@codecrafters.io>"]
+authors = ["SeyedAli <seyed.ali.devl@gmail.com>"]
 edition = "2024"
 
 [dependencies]
