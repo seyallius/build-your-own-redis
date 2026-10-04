@@ -54,7 +54,7 @@ fn handle_client(mut stream: TcpStream) -> Result<()> {
         buffer.extend_from_slice(&chunk[..bytes_read]);
 
         if let Some((value, _read_bytes)) = resp::parse(&buffer)? {
-            
+            println!("value: {value}");
         };
 
         stream

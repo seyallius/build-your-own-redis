@@ -22,7 +22,7 @@
 //! [resp]: https://redis.io/docs/reference/protocol-spec/
 
 use anyhow::Result;
-use std::str;
+use std::{fmt, str};
 
 // ----------------------------------- Types, Variables & Constants ----------------------------- //
 
@@ -62,6 +62,7 @@ const ARRAY: char = '*';
 /// already-parsed payload. Binary-safe types (`Bulk`, `Array`) use `Vec<u8>`
 /// rather than `String` because Redis values are arbitrary byte sequences and
 /// are not guaranteed to be valid UTF-8.
+#[derive(Debug)]
 pub(crate) enum Value {
     /// The `+` value.
     ///
@@ -87,6 +88,48 @@ pub(crate) enum Value {
     /// A sequence of zero or more [`Value`]s. Arrays may be arbitrarily nested.
     Array(Vec<Value>),
 }
+impl Value {
+    /// Renders bulk-string bytes: as a quoted string if valid UTF-8, otherwise
+    /// as an escaped byte sequence so binary payloads remain readable.
+    fn write_bulk(&self, f: &mut fmt::Formatter<'_>, bytes: &[u8]) -> fmt::Result {
+        match str::from_utf8(bytes) {
+            Ok(s) => write!(f, "\"{s}\""),
+            Err(_) => {
+                f.write_str("b\"")?;
+                for &b in bytes {
+                    match b {
+                        b'\\' => f.write_str("\\\\")?,
+                        b'"' => f.write_str("\\\"")?,
+                        0x20..=0x7e => write!(f, "{}", b as char)?,
+                        _ => write!(f, "\\x{b:02x}")?,
+                    }
+                }
+                f.write_str("\"")
+            }
+        }
+    }
+}
+impl fmt::Display for Value {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Value::Simple(s) => write!(f, "+{s}"),
+            Value::Error(s) => write!(f, "-{s}"),
+            Value::Integer(n) => write!(f, ":{n}"),
+            Value::Bulk(None) => write!(f, "(nil)"),
+            Value::Bulk(Some(bytes)) => self.write_bulk(f, bytes),
+            Value::Array(items) => {
+                f.write_str("[")?;
+                for (i, item) in items.iter().enumerate() {
+                    if i > 0 {
+                        f.write_str(", ")?;
+                    }
+                    write!(f, "{item}")?;
+                }
+                f.write_str("]")
+            }
+        }
+    }
+}
 
 // ------------------------------------- Public (crate) API ------------------------------------- //
 
@@ -107,8 +150,27 @@ pub(crate) fn parse(input: &[u8]) -> Result<Option<(Value, usize)>> {
 
 // -------------------------------------- Internal Helpers -------------------------------------- //
 
-fn parse_bulk(_input: &[u8]) -> Result<Option<(Value, usize)>> {
-    unimplemented!("implement me!")
+fn parse_bulk(input: &[u8]) -> Result<Option<(Value, usize)>> {
+    // $4\r\nECHO\r\n
+
+    let Some((bulk_str_len, payload_start_pos)) = parse_numeric_header(input)? else {
+        return Ok(None);
+    };
+
+    let payload_end_pos = payload_start_pos + bulk_str_len as usize;
+
+    // There should be two more bytes available (suffix \r\n)
+    if input.len() < payload_end_pos + 2 {
+        return Ok(None);
+    }
+
+    if input[payload_end_pos] != b'\r' || input[payload_end_pos + 1] != b'\n' {
+        anyhow::bail!("bulk string is missing its trailing CRLF");
+    }
+
+    let payload_bytes = input[payload_start_pos..payload_end_pos].to_vec();
+    let total_len = payload_end_pos + 2;
+    Ok(Some((Value::Bulk(Some(payload_bytes)), total_len)))
 }
 
 fn parse_simple(_input: &[u8]) -> Result<Option<(Value, usize)>> {
@@ -124,38 +186,49 @@ fn parse_error(_input: &[u8]) -> Result<Option<(Value, usize)>> {
 }
 
 fn parse_array(input: &[u8]) -> Result<Option<(Value, usize)>> {
-    // 1. Find the end of the array header:            *2\r\n...
-    if let Some(r_index) = find_crlf_sequence(input)//    ^--- This is index 2
-        && r_index > 1
-    {
-        let count_text = str::from_utf8(&input[1..r_index])?;
-        let item_count: i64 = count_text.parse()?; // parsed `2`
-
-        if item_count < 0 {
-            anyhow::bail!("nil arrays not supported");
-        }
-        let item_count = item_count as usize;
-
-        //TODO(empty array header): reject empty array header `*0\r\n`
-
-        // 2. Start just after that header. *2\r\n\$4...
-        let mut position = r_index + 2; //         ^--- This is index 4
-
-        // 3. Parse one value, then another, using parse for each.
-        let mut parsed_items = Vec::with_capacity(item_count);
-        for _ in 0..item_count {
-            if let Some((value, byte_count)) = parse(&input[position..])? {
-                parsed_items.push(value);
-                position += byte_count
-            } else {
-                return Ok(None); // the input is incomplete, so return Ok(None) immediately
-            };
-        }
-
-        // 4. Return the two values and the total number of bytes consumed.
-        return Ok(Some((Value::Array(parsed_items), position)));
+    let Some((item_count, mut position)) = parse_numeric_header(input)? else {
+        return Ok(None);
     };
-    Ok(None)
+
+    if item_count < 0 {
+        anyhow::bail!("nil arrays not supported");
+    }
+    let item_count = item_count as usize;
+
+    //TODO(empty array header): reject empty array header `*0\r\n`
+
+    // Parse one value, then another, using parse for each.
+    let mut parsed_items = Vec::with_capacity(item_count);
+    for _ in 0..item_count {
+        if let Some((value, byte_count)) = parse(&input[position..])? {
+            parsed_items.push(value);
+            position += byte_count
+        } else {
+            return Ok(None); // the input is incomplete, so return Ok(None) immediately
+        };
+    }
+
+    // Return the two values and the total number of bytes consumed.
+    Ok(Some((Value::Array(parsed_items), position)))
+}
+
+#[rustfmt::skip]
+fn parse_numeric_header(input: &[u8]) -> Result<Option<(i64, usize)>> {
+    //                                                               *2\r\n...
+    let Some(crlf_index) = find_crlf_sequence(input) else { //    ^--- This is index 2
+        return Ok(None);
+    };
+
+    if crlf_index <= 1 {
+        anyhow::bail!("missing numeric header");
+    }
+
+    let value_text = str::from_utf8(&input[1..crlf_index])?; // read between `<marker>..\r`
+    let value = value_text.parse::<i64>()?; // parsed header e.g., `*2\r\n` -> `2`
+    //                                            *2\r\n\$4...
+    let payload_start = crlf_index + 2; //         ^--- This is index 4
+
+    Ok(Some((value, payload_start)))
 }
 
 fn find_crlf_sequence(input: &[u8]) -> Option<usize> {
@@ -177,8 +250,6 @@ fn find_crlf_sequence(input: &[u8]) -> Option<usize> {
 mod parser_tests {
     use super::*;
 
-    // "<what's set up> → <what should happen>""
-
     mod parse_array {
         use super::*;
 
@@ -186,6 +257,63 @@ mod parser_tests {
         fn proper_name_suggestion() {
             let input = b"*2\r\n$4\r\nECHO\r\n$3\r\nhey\r\n";
             let (value, consumed) = parse_array(input).unwrap().unwrap();
+        }
+
+        #[test]
+        fn parses_echo_command_array() {
+            let input = b"*2\r\n$4\r\nECHO\r\n$3\r\nhey\r\n";
+
+            let (value, consumed) = parse_array(input).unwrap().unwrap();
+
+            assert_eq!(consumed, 23);
+
+            match value {
+                Value::Array(items) => {
+                    assert_eq!(items.len(), 2);
+
+                    match &items[0] {
+                        Value::Bulk(Some(bytes)) => assert_eq!(bytes, b"ECHO"),
+                        _ => panic!("expected first item to be a bulk string"),
+                    }
+
+                    match &items[1] {
+                        Value::Bulk(Some(bytes)) => assert_eq!(bytes, b"hey"),
+                        _ => panic!("expected second item to be a bulk string"),
+                    }
+                }
+                _ => panic!("expected an array"),
+            }
+        }
+    }
+
+    mod parse_bulk {
+        use super::*;
+
+        #[test]
+        fn parses_bulk_string() {
+            let input = b"$4\r\nECHO\r\n";
+
+            let (value, consumed) = parse_bulk(input).unwrap().unwrap();
+
+            assert_eq!(consumed, 10);
+            match value {
+                Value::Bulk(Some(bytes)) => assert_eq!(bytes, b"ECHO"),
+                _ => panic!("expected a non-null bulk string"),
+            }
+        }
+
+        #[test]
+        fn returns_none_when_payload_or_ending_is_incomplete() {
+            let input = b"$4\r\nECH";
+
+            assert!(parse_bulk(input).unwrap().is_none());
+        }
+
+        #[test]
+        fn rejects_invalid_ending() {
+            let input = b"$4\r\nECHOxx";
+
+            assert!(parse_bulk(input).is_err());
         }
     }
 
