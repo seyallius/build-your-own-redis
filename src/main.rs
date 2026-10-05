@@ -7,6 +7,8 @@ use std::{
     thread,
 };
 
+use crate::resp::parser::Value;
+
 mod resp;
 
 // ------------------------------------------- <Main> ------------------------------------------- //
@@ -53,13 +55,77 @@ fn handle_client(mut stream: TcpStream) -> Result<()> {
 
         buffer.extend_from_slice(&chunk[..bytes_read]);
 
-        if let Some((value, _read_bytes)) = resp::parse(&buffer)? {
-            println!("value: {value}");
-        };
+        // Keep processing as long as there's a complete message in the buffer
+        loop {
+            let Some((value, read_bytes)) = resp::parse(&buffer)? else {
+                break; // incomplete, wait for more data
+            };
 
-        stream
-            .write_all(b"+PONG\r\n")
-            .context("Could not send PONG")?;
+            buffer.drain(..read_bytes);
+            // equivalent to:
+            // buffer = buffer[read_bytes..].to_vec();
+            match value {
+                Value::Array(items) => {
+                    if items.is_empty() {
+                        stream.write_all(b"-ERR empty command\r\n")?;
+                        continue;
+                    }
+
+                    let command = match &items[0] {
+                        Value::Bulk(Some(bytes)) => bytes,
+                        _ => {
+                            stream.write_all(b"-ERR invalid command\r\n")?;
+                            continue;
+                        }
+                    };
+
+                    let command_lower = command.to_ascii_lowercase();
+                    match command_lower.as_slice() {
+                        b"ping" => {
+                            stream
+                                .write_all(b"+PONG\r\n")
+                                .context("Could not send PING response")?;
+                        }
+                        b"echo" => {
+                            if let Some(Value::Bulk(Some(arg_val))) = items.get(1) {
+                                // bulk string format: $<length>\r\n<data>\r\n
+
+                                let header = format!("${}\r\n", arg_val.len());
+                                let mut response = header.into_bytes();
+                                response.extend_from_slice(arg_val);
+                                response.extend_from_slice(b"\r\n");
+
+                                stream
+                                    .write_all(&response)
+                                    .context("Could not send ECHO response")?;
+                            } else {
+                                stream
+                                    .write_all(
+                                        b"-ERR wrong number of arguments for 'echo' command\r\n",
+                                    )
+                                    .context("Could not send error response")?;
+                            }
+                        }
+                        b"command" => {
+                            // redis-cli sends COMMAND DOCS on startup.
+                            // Return an empty array to satisfy it.
+                            stream
+                                .write_all(b"*0\r\n")
+                                .context("Could not empty array response")?
+                        }
+                        _ => {
+                            let cmd_str = String::from_utf8_lossy(&command);
+                            let err = format!("-ERR unknown command '{}'\r\n", cmd_str);
+                            stream.write_all(err.as_bytes())?;
+                        }
+                    }
+                }
+                _ => {
+                    // Inline commands (not array) — ignore or error
+                    stream.write_all(b"-ERR expected array\r\n")?;
+                }
+            }
+        }
     }
     Ok(())
 }

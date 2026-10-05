@@ -135,7 +135,7 @@ impl fmt::Display for Value {
 
 pub(crate) fn parse(input: &[u8]) -> Result<Option<(Value, usize)>> {
     let Some(&first) = input.first() else {
-        anyhow::bail!("empty input received");
+        return Ok(None);   // nothing to parse yet — not an error
     };
     let marker = first as char;
     match marker {
@@ -214,8 +214,9 @@ fn parse_array(input: &[u8]) -> Result<Option<(Value, usize)>> {
 
 #[rustfmt::skip]
 fn parse_numeric_header(input: &[u8]) -> Result<Option<(i64, usize)>> {
-    //                                                               *2\r\n...
-    let Some(crlf_index) = find_crlf_sequence(input) else { //    ^--- This is index 2
+    // *2\r\n...
+    //    ^--- This is index 2
+    let Some(crlf_index) = find_crlf_sequence(input) else {
         return Ok(None);
     };
 
@@ -225,8 +226,9 @@ fn parse_numeric_header(input: &[u8]) -> Result<Option<(i64, usize)>> {
 
     let value_text = str::from_utf8(&input[1..crlf_index])?; // read between `<marker>..\r`
     let value = value_text.parse::<i64>()?; // parsed header e.g., `*2\r\n` -> `2`
-    //                                            *2\r\n\$4...
-    let payload_start = crlf_index + 2; //         ^--- This is index 4
+    // *2\r\n\$4...
+    //    ^--- This is index 4
+    let payload_start = crlf_index + 2;
 
     Ok(Some((value, payload_start)))
 }
@@ -252,12 +254,6 @@ mod parser_tests {
 
     mod parse_array {
         use super::*;
-
-        #[test]
-        fn proper_name_suggestion() {
-            let input = b"*2\r\n$4\r\nECHO\r\n$3\r\nhey\r\n";
-            let (value, consumed) = parse_array(input).unwrap().unwrap();
-        }
 
         #[test]
         fn parses_echo_command_array() {
