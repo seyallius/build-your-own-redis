@@ -57,7 +57,16 @@ fn handle_client(mut stream: TcpStream) -> Result<()> {
 
         // Keep processing as long as there's a complete message in the buffer
         loop {
-            let Some((value, read_bytes)) = resp::parse(&buffer)? else {
+            let parsed = match resp::parse(&buffer) {
+                Ok(p) => p,
+                Err(e) => {
+                    eprintln!("parse error from {peer}: {e:#}");
+                    stream.write_all(b"-ERR protocol error\r\n").ok();
+                    break; // or drain the buffer and continue
+                }
+            };
+
+            let Some((value, read_bytes)) = parsed else {
                 break; // incomplete, wait for more data
             };
 
