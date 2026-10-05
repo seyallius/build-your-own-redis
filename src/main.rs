@@ -90,20 +90,21 @@ fn handle_client(mut stream: TcpStream) -> Result<()> {
 
                     let command_lower = command.to_ascii_lowercase();
                     match command_lower.as_slice() {
-                        b"ping" => {
-                            stream
+                        b"ping" => match items.get(1) {
+                            None => stream
                                 .write_all(b"+PONG\r\n")
-                                .context("Could not send PING response")?;
-                        }
+                                .context("Could not send PING response")?,
+                            Some(Value::Bulk(Some(msg))) => {
+                                let resp = Value::encode_bulk_string(msg);
+                                stream
+                                    .write_all(&resp)
+                                    .context("Could not send PING msg response")?;
+                            }
+                            _ => stream.write_all(b"-ERR wrong number of arguments\r\n")?,
+                        },
                         b"echo" => {
                             if let Some(Value::Bulk(Some(arg_val))) = items.get(1) {
-                                // bulk string format: $<length>\r\n<data>\r\n
-
-                                let header = format!("${}\r\n", arg_val.len());
-                                let mut response = header.into_bytes();
-                                response.extend_from_slice(arg_val);
-                                response.extend_from_slice(b"\r\n");
-
+                                let response = Value::encode_bulk_string(arg_val);
                                 stream
                                     .write_all(&response)
                                     .context("Could not send ECHO response")?;

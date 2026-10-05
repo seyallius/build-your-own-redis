@@ -108,6 +108,15 @@ impl Value {
             }
         }
     }
+
+    pub(crate) fn encode_bulk_string(b: &[u8]) -> Vec<u8> {
+        // bulk string format: $<length>\r\n<data>\r\n
+        let header = format!("${}\r\n", b.len());
+        let mut response = header.into_bytes();
+        response.extend_from_slice(b);
+        response.extend_from_slice(b"\r\n");
+        response
+    }
 }
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -135,7 +144,7 @@ impl fmt::Display for Value {
 
 pub(crate) fn parse(input: &[u8]) -> Result<Option<(Value, usize)>> {
     let Some(&first) = input.first() else {
-        return Ok(None);   // nothing to parse yet — not an error
+        return Ok(None); // nothing to parse yet — not an error
     };
     let marker = first as char;
     match marker {
