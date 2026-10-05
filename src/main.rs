@@ -1,141 +1,54 @@
 //! Build Your Own X - Redis!
+//!
+//! Entry point for `built-your-own-redis`.
+//!
+//! This crate implements a minimal Redis-compatible server speaking the
+//! [RESP][resp] wire protocol. The `main` function is intentionally thin: it
+//! binds a TCP listener and delegates every accepted connection to
+//! [`server::connection::handle`] on its own thread.
+//!
+//! The actual protocol parsing lives in [`resp`], and the per-command logic
+//! lives in [`commands`]. Keeping `main` free of business logic makes both of
+//! those modules independently testable and easier to evolve.
+//!
+//! [resp]: https://redis.io/docs/reference/protocol-spec/
 
 use anyhow::{Context, Result};
-use std::{
-    io::{Read, Write},
-    net::{TcpListener, TcpStream},
-    thread,
-};
+use std::{net::TcpListener, thread};
 
-use crate::resp::parser::Value;
-
+mod commands;
 mod resp;
+mod server;
 
-// ------------------------------------------- <Main> ------------------------------------------- //
+/// Bind address for the Redis-compatible listener.
+///
+/// Kept as a constant so it can be overridden in one place (e.g. for tests or
+/// when adding CLI argument parsing later).
+const BIND_ADDRESS: &str = "127.0.0.1:6379";
 
+/// Process entry point.
+///
+/// Binds [`BIND_ADDRESS`], accepts connections forever, and spawns one OS
+/// thread per client. Errors during `accept` are logged and the loop
+/// continues so a single bad connection cannot bring the server down.
 fn main() -> Result<()> {
     println!("Logs from your program will appear here!");
 
-    let listener = TcpListener::bind("127.0.0.1:6379").context("Could not bind on 6379")?;
+    let listener = TcpListener::bind(BIND_ADDRESS)
+        .with_context(|| format!("could not bind on {BIND_ADDRESS}"))?;
+
     for stream in listener.incoming() {
-        let stream = stream.context("accepting connection failed")?;
-        thread::spawn(move || {
-            if let Err(e) = handle_client(stream) {
-                eprintln!("error handling client: {e:#}");
-            }
-        });
-    }
-    Ok(())
-}
-
-// -------------------------------------- Internal Helpers -------------------------------------- //
-
-/// Serves one client: logs the peer, then replies `+PONG\r\n` for every
-/// non-empty read until the client disconnects.
-fn handle_client(mut stream: TcpStream) -> Result<()> {
-    //TODO(event-loop): "To implement this, you'll need to either use threads or, if you're feeling adventurous,
-    // implement an Event Loop (like the official Redis implementation does)." - After finishing the
-    // challenge, get back and re-implement with event loop (tokio).
-
-    let peer = stream.peer_addr().context("peer_addr failed")?;
-    println!("connection accepted for: {}", peer.ip().to_canonical());
-
-    const READ_BUF_SIZE: usize = 512;
-    const EOF: usize = 0;
-    let mut buffer: Vec<u8> = Vec::new(); // accumulates across reads
-    let mut chunk = [0u8; READ_BUF_SIZE]; // scratch space for one read
-
-    loop {
-        let bytes_read = stream
-            .read(&mut chunk)
-            .with_context(|| format!("Could not read from {peer}"))?;
-        if bytes_read == EOF {
-            break;
-        }
-
-        buffer.extend_from_slice(&chunk[..bytes_read]);
-
-        // Keep processing as long as there's a complete message in the buffer
-        loop {
-            let parsed = match resp::parse(&buffer) {
-                Ok(p) => p,
-                Err(e) => {
-                    eprintln!("parse error from {peer}: {e:#}");
-                    stream.write_all(b"-ERR protocol error\r\n").ok();
-                    break; // or drain the buffer and continue
-                }
-            };
-
-            let Some((value, read_bytes)) = parsed else {
-                break; // incomplete, wait for more data
-            };
-
-            buffer.drain(..read_bytes);
-            // equivalent to:
-            // buffer = buffer[read_bytes..].to_vec();
-            match value {
-                Value::Array(items) => {
-                    if items.is_empty() {
-                        stream.write_all(b"-ERR empty command\r\n")?;
-                        continue;
+        match stream {
+            Ok(stream) => {
+                thread::spawn(move || {
+                    if let Err(e) = server::connection::handle(stream) {
+                        eprintln!("error handling client: {e:#}");
                     }
-
-                    let command = match &items[0] {
-                        Value::Bulk(Some(bytes)) => bytes,
-                        _ => {
-                            stream.write_all(b"-ERR invalid command\r\n")?;
-                            continue;
-                        }
-                    };
-
-                    let command_lower = command.to_ascii_lowercase();
-                    match command_lower.as_slice() {
-                        b"ping" => match items.get(1) {
-                            None => stream
-                                .write_all(b"+PONG\r\n")
-                                .context("Could not send PING response")?,
-                            Some(Value::Bulk(Some(msg))) => {
-                                let resp = Value::encode_bulk_string(msg);
-                                stream
-                                    .write_all(&resp)
-                                    .context("Could not send PING msg response")?;
-                            }
-                            _ => stream.write_all(b"-ERR wrong number of arguments\r\n")?,
-                        },
-                        b"echo" => {
-                            if let Some(Value::Bulk(Some(arg_val))) = items.get(1) {
-                                let response = Value::encode_bulk_string(arg_val);
-                                stream
-                                    .write_all(&response)
-                                    .context("Could not send ECHO response")?;
-                            } else {
-                                stream
-                                    .write_all(
-                                        b"-ERR wrong number of arguments for 'echo' command\r\n",
-                                    )
-                                    .context("Could not send error response")?;
-                            }
-                        }
-                        b"command" => {
-                            // redis-cli sends COMMAND DOCS on startup.
-                            // Return an empty array to satisfy it.
-                            stream
-                                .write_all(b"*0\r\n")
-                                .context("Could not empty array response")?
-                        }
-                        _ => {
-                            let cmd_str = String::from_utf8_lossy(&command);
-                            let err = format!("-ERR unknown command '{}'\r\n", cmd_str);
-                            stream.write_all(err.as_bytes())?;
-                        }
-                    }
-                }
-                _ => {
-                    // Inline commands (not array) — ignore or error
-                    stream.write_all(b"-ERR expected array\r\n")?;
-                }
+                });
             }
+            Err(e) => eprintln!("accept failed: {e:#}"),
         }
     }
+
     Ok(())
 }

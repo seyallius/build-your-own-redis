@@ -108,15 +108,6 @@ impl Value {
             }
         }
     }
-
-    pub(crate) fn encode_bulk_string(b: &[u8]) -> Vec<u8> {
-        // bulk string format: $<length>\r\n<data>\r\n
-        let header = format!("${}\r\n", b.len());
-        let mut response = header.into_bytes();
-        response.extend_from_slice(b);
-        response.extend_from_slice(b"\r\n");
-        response
-    }
 }
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
