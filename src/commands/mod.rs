@@ -26,7 +26,10 @@ const REGISTRY: &[&dyn Command] = &[&ping::Ping, &echo::Echo, &command::CommandC
 
 // ------------------------------------- Public (crate) API ------------------------------------- //
 
-/// A single Redis command handler.
+/// A handler that executes one Redis command.
+///
+/// The command name is used during lookup. The remaining RESP values are
+/// passed to `execute` as the command arguments.
 ///
 /// Implementors receive the command's arguments (everything after the command
 /// name in the RESP array) and produce a [`Value`] describing the reply.
@@ -40,9 +43,10 @@ pub(crate) trait Command: Send + Sync + 'static {
     fn execute(&self, args: &[Value]) -> Result<Value>;
 }
 
-/// Looks up a command by its wire name.
+/// Finds a command handler by its wire name.
 ///
-/// Matching is ASCII-case-insensitive to mirror Redis' behavior.
+/// Redis command names are case-insensitive, so this comparison accepts names
+/// such as `ECHO`, `echo`, and `EcHo`.
 pub(crate) fn lookup(name: &[u8]) -> Option<&'static dyn Command> {
     REGISTRY
         .iter()

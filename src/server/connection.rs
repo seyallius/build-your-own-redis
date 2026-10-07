@@ -1,4 +1,4 @@
-//! Per-client TCP read loop.
+//! Per-client TCP read loop. Reads RESP messages from one client connection and dispatches each one.
 //!
 //! The loop is deliberately small: read bytes, append them to a buffer, and
 //! hand complete RESP frames to [`dispatch::dispatch`]. Any partially-received
@@ -14,23 +14,19 @@ use std::{
     net::TcpStream,
 };
 
-/// Size of the scratch buffer used for each `read(2)` call.
-///
-/// This only bounds the size of a single syscall; the accumulation buffer
-/// ([`Vec<u8>`]) grows as needed to hold a full frame.
+/// Maximum number of bytes read from the socket in one call.
 const READ_BUF_SIZE: usize = 512;
 
-/// Return value of [`std::io::Read::read`] signalling end-of-stream.
+/// Return value from [`std::io::Read::read`] indicating that the client disconnected (signalling end-of-stream).
 const EOF: usize = 0;
 
 // ------------------------------------- Public (crate) API ------------------------------------- //
 
 /// Serves a single client until it disconnects or a fatal I/O error occurs.
 ///
-/// The function owns the [`TcpStream`] for its lifetime and returns `Ok(())`
-/// on a clean disconnect. Parser-level errors are reported to the client as
-/// RESP errors and terminate the connection; I/O errors are propagated so the
-/// caller (a thread in `main`) can log them.
+/// Bytes from each read are accumulated in `buffer`. Complete RESP values are
+/// parsed and dispatched; any incomplete trailing value stays in the buffer
+/// until another read supplies the missing bytes.
 pub(crate) fn handle(mut stream: TcpStream) -> Result<()> {
     let peer = stream.peer_addr().context("peer_addr failed")?;
     println!("connection accepted for: {}", peer.ip().to_canonical());
@@ -48,7 +44,7 @@ pub(crate) fn handle(mut stream: TcpStream) -> Result<()> {
 
         buffer.extend_from_slice(&chunk[..bytes_read]);
 
-        // Drain every complete frame currently in the buffer.
+        // Handle every complete RESP value currently in the buffer.
         while let Some((value, consumed)) = next_frame(&mut stream, &buffer, peer)? {
             buffer.drain(..consumed);
             dispatch::dispatch(&mut stream, value)?;
@@ -60,7 +56,7 @@ pub(crate) fn handle(mut stream: TcpStream) -> Result<()> {
 
 // -------------------------------------- Internal Helpers -------------------------------------- //
 
-/// Attempts to parse one complete RESP frame from `buffer`.
+/// Parses one complete RESP value from the start of `buffer`.
 ///
 /// * Returns `Ok(Some((value, consumed)))` when a frame is ready.
 /// * Returns `Ok(None)` when `buffer` holds only a partial frame.

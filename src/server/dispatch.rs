@@ -1,4 +1,4 @@
-//! Command dispatcher.
+//! Command dispatcher. Looks up commands, executes them, and writes RESP replies.
 //!
 //! Maps a parsed RESP [`Value::Array`] onto a registered [`Command`] and runs
 //! it. The dispatcher itself is command-agnostic: it consults
@@ -11,11 +11,10 @@ use std::{io::Write, net::TcpStream};
 
 // ------------------------------------- Public (crate) API ------------------------------------- //
 
-/// Executes the command encoded by `value` and writes its reply to `stream`.
+/// Executes a parsed command array and sends its reply.
 ///
-/// Expects `value` to be a non-empty RESP array whose first element is a bulk
-/// string command name. Anything else is reported to the client as an error;
-/// the connection is not closed.
+/// The first array element is treated as the command name. Any remaining
+/// elements are passed to the selected command handler as arguments.
 pub(crate) fn dispatch(stream: &mut TcpStream, value: Value) -> Result<()> {
     let items = match value {
         Value::Array(items) => items,
@@ -86,5 +85,40 @@ fn encode(value: &Value) -> Vec<u8> {
             }
             out
         }
+    }
+}
+
+// -------------------------------------------- Tests ------------------------------------------- //
+
+#[cfg(test)]
+mod dispatch_tests {
+    use super::*;
+
+    #[test]
+    fn encodes_bulk_string() {
+        let value = Value::Bulk(Some(b"hello".to_vec()));
+
+        assert_eq!(encode(&value), b"$5\r\nhello\r\n");
+    }
+
+    #[test]
+    fn encodes_bulk_string_with_non_utf8_bytes() {
+        let value = Value::Bulk(Some(vec![0xff, b'\r', b'\n']));
+
+        assert_eq!(encode(&value), b"$3\r\n\xff\r\n\r\n");
+    }
+
+    #[test]
+    fn encodes_pong_as_simple_string() {
+        let value = Value::Simple("PONG".into());
+
+        assert_eq!(encode(&value), b"+PONG\r\n");
+    }
+
+    #[test]
+    fn encodes_empty_array() {
+        let value = Value::Array(Vec::new());
+
+        assert_eq!(encode(&value), b"*0\r\n");
     }
 }

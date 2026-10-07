@@ -1,4 +1,4 @@
-//! Connection handling and command dispatch.
+//! TCP connection handling and command dispatch.
 //!
 //! This module groups the two responsibilities that used to live inside
 //! `main.rs`:
