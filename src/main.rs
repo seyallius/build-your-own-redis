@@ -13,16 +13,21 @@
 //!
 //! [resp]: https://redis.io/docs/reference/protocol-spec/
 
+use crate::store::Store;
 use anyhow::{Context, Result};
 use std::{
+    collections::HashMap,
     env,
+    hash::Hash,
     net::{Ipv4Addr, SocketAddrV4, TcpListener},
+    sync::Arc,
     thread,
 };
 
 mod commands;
 mod resp;
 mod server;
+mod store;
 
 /// Bind address for the Redis-compatible listener.
 const DEFAULT_PORT: u16 = 6379;
@@ -38,14 +43,17 @@ fn main() -> Result<()> {
     let port = parse_port()?;
     let address = SocketAddrV4::new(Ipv4Addr::LOCALHOST, port);
 
-    let listener = TcpListener::bind(address)
-        .with_context(|| format!("could not bind on {address}"))?;
+    let listener =
+        TcpListener::bind(address).with_context(|| format!("could not bind on {address}"))?;
+
+    let storage = Store::new(HashMap::new());
 
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
+                let storage = Arc::clone(&storage);
                 thread::spawn(move || {
-                    if let Err(e) = server::connection::handle(stream) {
+                    if let Err(e) = server::connection::handle(stream, &storage) {
                         eprintln!("error handling client: {e:#}");
                     }
                 });

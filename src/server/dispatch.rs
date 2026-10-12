@@ -5,7 +5,7 @@
 //! [`commands::lookup`] for the handler, so adding a new command is a
 //! one-line change in the [`crate::commands`] registry.
 
-use crate::{commands, resp::parser::Value};
+use crate::{commands, resp::parser::Value, store};
 use anyhow::{Context, Result};
 use std::{io::Write, net::TcpStream};
 
@@ -15,7 +15,7 @@ use std::{io::Write, net::TcpStream};
 ///
 /// The first array element is treated as the command name. Any remaining
 /// elements are passed to the selected command handler as arguments.
-pub(crate) fn dispatch(stream: &mut TcpStream, value: Value) -> Result<()> {
+pub(crate) fn dispatch(stream: &mut TcpStream, value: Value, storage: &store::Store) -> Result<()> {
     let items = match value {
         Value::Array(items) => items,
         _ => return reply_error(stream, "expected array"),
@@ -37,7 +37,7 @@ pub(crate) fn dispatch(stream: &mut TcpStream, value: Value) -> Result<()> {
 
     let args = &items[1..];
     let reply = cmd
-        .execute(args)
+        .execute(args, Some(&storage))
         .with_context(|| format!("command '{}' failed", cmd.name()))?;
 
     write_value(stream, &reply)

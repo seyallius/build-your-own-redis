@@ -5,7 +5,7 @@
 //! the client by returning an empty array. Replace this with a real reply
 //! when command metadata is added.
 
-use crate::{commands::Command, resp::parser::Value};
+use crate::{commands::Command, resp::parser::Value, store};
 use anyhow::Result;
 
 // ------------------------------------- Public (crate) API ------------------------------------- //
@@ -24,7 +24,7 @@ impl Command for CommandCmd {
     /// This lets redis-cli continue its startup when this server does not
     /// provide command metadata. It is a compatibility stub, not a full
     /// implementation of Redis' COMMAND command.
-    fn execute(&self, _args: &[Value]) -> Result<Value> {
+    fn execute(&self, _args: &[Value], _storage: Option<&store::Store>) -> Result<Value> {
         Ok(Value::Array(Vec::new()))
     }
 }
@@ -39,7 +39,7 @@ mod command_tests {
     fn accepts_docs_subcommand() {
         let args = [Value::Bulk(Some(b"DOCS".to_vec()))];
 
-        let result = CommandCmd.execute(&args).unwrap();
+        let result = CommandCmd.execute(&args, None).unwrap();
 
         assert!(matches!(result, Value::Array(items) if items.is_empty()));
     }

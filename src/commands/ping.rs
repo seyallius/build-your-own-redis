@@ -1,6 +1,6 @@
 //! Implementation of the `PING` command.
 
-use crate::{commands::Command, resp::parser::Value};
+use crate::{commands::Command, resp::parser::Value, store};
 use anyhow::Result;
 
 // ------------------------------------- Public (crate) API ------------------------------------- //
@@ -19,7 +19,7 @@ impl Command for Ping {
     }
 
     /// Returns `PONG` with no argument, or echoes one supplied argument.
-    fn execute(&self, args: &[Value]) -> Result<Value> {
+    fn execute(&self, args: &[Value], _storage: Option<&store::Store>) -> Result<Value> {
         match args {
             [] => Ok(Value::Simple("PONG".to_string())),
             [Value::Bulk(Some(msg))] => Ok(Value::Bulk(Some(msg.clone()))),
@@ -38,7 +38,7 @@ mod ping_tests {
 
     #[test]
     fn returns_pong_without_arguments() {
-        let result = Ping.execute(&[]).unwrap();
+        let result = Ping.execute(&[], None).unwrap();
 
         assert!(matches!(result, Value::Simple(ref message) if message == "PONG"));
     }
@@ -47,7 +47,7 @@ mod ping_tests {
     fn echoes_one_bulk_string_argument() {
         let args = [Value::Bulk(Some(b"hello".to_vec()))];
 
-        let result = Ping.execute(&args).unwrap();
+        let result = Ping.execute(&args, None).unwrap();
 
         assert!(matches!(
             result,
@@ -62,7 +62,7 @@ mod ping_tests {
             Value::Bulk(Some(b"second".to_vec())),
         ];
 
-        let result = Ping.execute(&args).unwrap();
+        let result = Ping.execute(&args, None).unwrap();
 
         assert!(matches!(result, Value::Error(_)));
     }

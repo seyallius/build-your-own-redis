@@ -42,8 +42,7 @@ impl TestServer {
 
         drop(listener);
 
-        let binary = env::var("CARGO_BIN_EXE_build-your-own-redis")
-            .expect("could not find build-your-own-redis binary");
+        let binary = env!("CARGO_BIN_EXE_build-your-own-redis");
         let child = Command::new(binary)
             .args(["--port", &address.port().to_string()])
             .stdout(Stdio::null())

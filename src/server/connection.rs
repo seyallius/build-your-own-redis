@@ -7,6 +7,7 @@
 use crate::{
     resp::{self, parser::Value},
     server::dispatch,
+    store,
 };
 use anyhow::{Context, Result};
 use std::{
@@ -27,7 +28,7 @@ const EOF: usize = 0;
 /// Bytes from each read are accumulated in `buffer`. Complete RESP values are
 /// parsed and dispatched; any incomplete trailing value stays in the buffer
 /// until another read supplies the missing bytes.
-pub(crate) fn handle(mut stream: TcpStream) -> Result<()> {
+pub(crate) fn handle(mut stream: TcpStream, storage: &store::Store) -> Result<()> {
     let peer = stream.peer_addr().context("peer_addr failed")?;
     println!("connection accepted for: {}", peer.ip().to_canonical());
 
@@ -47,7 +48,7 @@ pub(crate) fn handle(mut stream: TcpStream) -> Result<()> {
         // Handle every complete RESP value currently in the buffer.
         while let Some((value, consumed)) = next_frame(&mut stream, &buffer, peer)? {
             buffer.drain(..consumed);
-            dispatch::dispatch(&mut stream, value)?;
+            dispatch::dispatch(&mut stream, value, storage)?;
         }
     }
 

@@ -1,6 +1,6 @@
 //! Implementation of the `ECHO` command.
 
-use crate::{commands::Command, resp::parser::Value};
+use crate::{commands::Command, resp::parser::Value, store};
 use anyhow::Result;
 
 // ------------------------------------- Public (crate) API ------------------------------------- //
@@ -16,7 +16,7 @@ impl Command for Echo {
     /// Copies the argument bytes into the response value.
     ///
     /// The bytes stay binary-safe: they are not converted to UTF-8 text.
-    fn execute(&self, args: &[Value]) -> Result<Value> {
+    fn execute(&self, args: &[Value], _storage: Option<&store::Store>) -> Result<Value> {
         match args {
             [Value::Bulk(Some(msg))] => Ok(Value::Bulk(Some(msg.clone()))),
             _ => Ok(Value::Error(
@@ -36,7 +36,7 @@ mod echo_tests {
     fn echoes_one_bulk_string_argument() {
         let args = [Value::Bulk(Some(b"hello".to_vec()))];
 
-        let result = Echo.execute(&args).unwrap();
+        let result = Echo.execute(&args, None).unwrap();
 
         assert!(matches!(
             result,
@@ -46,7 +46,7 @@ mod echo_tests {
 
     #[test]
     fn returns_error_when_argument_is_missing() {
-        let result = Echo.execute(&[]).unwrap();
+        let result = Echo.execute(&[], None).unwrap();
 
         assert!(matches!(result, Value::Error(_)));
     }
@@ -55,7 +55,7 @@ mod echo_tests {
     fn returns_error_when_argument_is_not_a_bulk_string() {
         let args = [Value::Simple("hello".into())];
 
-        let result = Echo.execute(&args).unwrap();
+        let result = Echo.execute(&args, None).unwrap();
 
         assert!(matches!(result, Value::Error(_)));
     }

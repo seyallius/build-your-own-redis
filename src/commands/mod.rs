@@ -11,12 +11,13 @@
 //!
 //! Nothing in [`crate::server`] needs to change.
 
-use crate::resp::parser::Value;
+use crate::{resp::parser::Value, store};
 use anyhow::Result;
 
 pub(crate) mod command;
 pub(crate) mod echo;
 pub(crate) mod ping;
+pub(crate) mod set;
 
 /// Static registry of all supported commands.
 ///
@@ -40,7 +41,7 @@ pub(crate) trait Command: Send + Sync + 'static {
     fn name(&self) -> &'static str;
 
     /// Executes the command against the given arguments.
-    fn execute(&self, args: &[Value]) -> Result<Value>;
+    fn execute(&self, args: &[Value], storage: Option<&store::Store>) -> Result<Value>;
 }
 
 /// Finds a command handler by its wire name.
