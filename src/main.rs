@@ -14,17 +14,18 @@
 //! [resp]: https://redis.io/docs/reference/protocol-spec/
 
 use anyhow::{Context, Result};
-use std::{net::TcpListener, thread};
+use std::{
+    env,
+    net::{Ipv4Addr, SocketAddrV4, TcpListener},
+    thread,
+};
 
 mod commands;
 mod resp;
 mod server;
 
 /// Bind address for the Redis-compatible listener.
-///
-/// Kept as a constant so it can be overridden in one place (e.g. for tests or
-/// when adding CLI argument parsing later).
-const BIND_ADDRESS: &str = "127.0.0.1:6379";
+const DEFAULT_PORT: u16 = 6379;
 
 /// Process entry point.
 ///
@@ -34,8 +35,11 @@ const BIND_ADDRESS: &str = "127.0.0.1:6379";
 fn main() -> Result<()> {
     println!("Logs from your program will appear here!");
 
-    let listener = TcpListener::bind(BIND_ADDRESS)
-        .with_context(|| format!("could not bind on {BIND_ADDRESS}"))?;
+    let port = parse_port()?;
+    let address = SocketAddrV4::new(Ipv4Addr::LOCALHOST, port);
+
+    let listener = TcpListener::bind(address)
+        .with_context(|| format!("could not bind on {address}"))?;
 
     for stream in listener.incoming() {
         match stream {
@@ -51,4 +55,23 @@ fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+// -------------------------------------- Internal Helpers -------------------------------------- //
+
+/// Parses the optional --port argument, defaulting to 6379.
+fn parse_port() -> Result<u16> {
+    let mut args = env::args().skip(1);
+    match args.next().as_deref() {
+        None => Ok(DEFAULT_PORT),
+        Some("--port" | "-p") => {
+            let value = args.next().context("missing value for --port")?;
+            anyhow::ensure!(args.next().is_none(), "unexpected additional arguments");
+
+            let port = value.parse::<u16>().context("invalid port number")?;
+            anyhow::ensure!(port != 0, "port must be greater than zero");
+            Ok(port)
+        }
+        Some(argument) => anyhow::bail!("unknown argument: {argument}"),
+    }
 }
