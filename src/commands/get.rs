@@ -1,7 +1,7 @@
 //! Implementation of the `GET` command.
 
 use crate::{commands::Command, resp::parser::Value, store};
-use anyhow::{Error, Result};
+use anyhow::Result;
 
 // ------------------------------------- Public (crate) API ------------------------------------- //
 
@@ -26,9 +26,7 @@ impl Command for Get {
 
         match args {
             [Value::Bulk(Some(key))] => {
-                let storage = storage
-                    .lock()
-                    .map_err(|poison_error| Error::msg(poison_error.to_string()))?;
+                let storage = storage.map()?;
                 if let Some(val) = storage.get(key) {
                     return Ok(Value::Bulk(Some(val.clone())));
                 }
@@ -46,10 +44,9 @@ impl Command for Get {
 #[cfg(test)]
 mod get_tests {
     use super::*;
-    use std::{collections::HashMap, sync::Mutex};
 
     fn new_store() -> store::Store {
-        store::Store::new(Mutex::new(HashMap::new()))
+        store::Store::new()
     }
 
     #[test]
@@ -64,17 +61,16 @@ mod get_tests {
     #[test]
     fn gets_simple_string_value() {
         let storage = new_store();
-        storage
-            .lock()
-            .unwrap()
-            .insert(b"foo".to_vec(), b"bar".to_vec());
+        let mut map = storage.map().unwrap();
+        map.insert(b"foo".to_vec(), b"bar".to_vec());
+        drop(map);
 
         let args = [Value::Bulk(Some(b"foo".to_vec()))];
         let result = Get.execute(&args, Some(&storage)).unwrap();
 
         assert!(matches!(result, Value::Bulk(Some(value)) if value == b"bar"));
-        let storage = storage.lock().unwrap();
-        let stored_val = storage.get(b"foo".as_slice()).unwrap();
+        let map = storage.map().unwrap();
+        let stored_val = map.get(b"foo".as_slice()).unwrap();
         assert_eq!(stored_val, b"bar");
     }
 
@@ -89,7 +85,7 @@ mod get_tests {
             "expected null bulk, got {:?}",
             result
         );
-        let storage = storage.lock().unwrap();
+        let storage = storage.map().unwrap();
         let stored_val = storage.get(b"foo".as_slice());
         assert!(stored_val.is_none(), "key shouldn't exist");
     }

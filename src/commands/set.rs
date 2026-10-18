@@ -1,7 +1,7 @@
 //! Implementation of the `SET` command.
 
 use crate::{commands::Command, resp::parser::Value, store};
-use anyhow::{Error, Result};
+use anyhow::Result;
 
 // ------------------------------------- Public (crate) API ------------------------------------- //
 
@@ -26,9 +26,7 @@ impl Command for Set {
 
         match args {
             [Value::Bulk(Some(key)), Value::Bulk(Some(val))] => {
-                let mut storage = storage
-                    .lock()
-                    .map_err(|poison_error| Error::msg(poison_error.to_string()))?;
+                let mut storage = storage.map()?;
                 storage.insert(key.to_vec(), val.to_vec());
                 Ok(Value::Simple(String::from("OK")))
             }
@@ -44,10 +42,9 @@ impl Command for Set {
 #[cfg(test)]
 mod set_tests {
     use super::*;
-    use std::{collections::HashMap, sync::Mutex};
 
     fn new_store() -> store::Store {
-        store::Store::new(Mutex::new(HashMap::new()))
+        store::Store::new()
     }
 
     #[test]
@@ -69,7 +66,7 @@ mod set_tests {
         let result = Set.execute(&args, Some(&storage)).unwrap();
 
         assert!(matches!(result, Value::Simple(ref message) if message == "OK"));
-        let storage = storage.lock().unwrap();
+        let storage = storage.map().unwrap();
         let stored_val = storage.get(b"foo".as_slice()).unwrap();
         assert_eq!(stored_val, b"bar");
     }

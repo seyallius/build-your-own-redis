@@ -41,12 +41,12 @@ fn main() -> Result<()> {
     let listener =
         TcpListener::bind(address).with_context(|| format!("could not bind on {address}"))?;
 
-    let storage = Store::new(Mutex::new(HashMap::new()));
+    let storage = Store::new();
 
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
-                let storage = Arc::clone(&storage);
+                let storage = storage.clone();
                 thread::spawn(move || {
                     if let Err(e) = server::connection::handle(stream, &storage) {
                         eprintln!("error handling client: {e:#}");
