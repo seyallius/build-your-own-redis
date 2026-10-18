@@ -4,10 +4,11 @@
 //! implementing [`Command`]. Commands are registered in [`REGISTRY`] and
 //! looked up by name via [`lookup`].
 //!
-//! Adding a new command requires two lines:
+//! Adding a command requires creating its module and handler, declaring the
+//! module here, importing its handler, and adding it to [`REGISTRY`].
 //!
-//! 1. Create a new module under `commands/` defining the handler type.
-//! 2. Add the type to [`REGISTRY`].
+//! The server dispatches commands through this registry, so it does not need
+//! command-specific changes.
 //!
 //! Nothing in [`crate::server`] needs to change.
 

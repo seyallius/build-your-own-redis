@@ -29,9 +29,9 @@ const DEFAULT_PORT: u16 = 6379;
 
 /// Process entry point.
 ///
-/// Binds [`BIND_ADDRESS`], accepts connections forever, and spawns one OS
-/// thread per client. Errors during `accept` are logged and the loop
-/// continues so a single bad connection cannot bring the server down.
+/// Parses the optional port argument, binds the listener to localhost, and
+/// spawns a thread for each accepted client connection. Accept errors are
+/// logged so the server can continue accepting connections.
 fn main() -> Result<()> {
     println!("Logs from your program will appear here!");
 

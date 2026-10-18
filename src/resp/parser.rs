@@ -4,10 +4,10 @@
 //! message begins with a single **type byte** that identifies the kind of value being
 //! sent, followed by type-specific payload bytes and a terminating `\r\n`.
 //!
-//! This module provides an incremental, non-allocating-where-possible parser that
-//! consumes a byte slice and, when a complete value is available, returns it together
-//! with the number of bytes that were consumed. This makes it suitable for use with
-//! buffered I/O, where partial messages may arrive across multiple reads.
+//! The parser consumes a byte slice and, when a complete value is available,
+//! returns it together with the number of bytes consumed. This supports
+//! buffered I/O, where a message may arrive across multiple reads. Parsed
+//! bulk-string payloads are copied into owned byte vectors.
 //!
 //! The supported RESP types are:
 //!

@@ -7,10 +7,8 @@ use anyhow::{Error, Result};
 
 /// The `SET` command.
 ///
-/// * `SET` replies with the simple string `PONG`.
-/// * `SET <message>` replies with `<message>` as a bulk string.
-///
-/// This matches the behavior of Redis 2.8+.
+/// Stores the supplied value under the supplied key and replies with the
+/// simple string `OK`.
 pub(crate) struct Set;
 impl Command for Set {
     /// Returns the command's canonical name.
@@ -18,7 +16,9 @@ impl Command for Set {
         "set"
     }
 
-    /// Returns `PONG` with no argument, or echoes one supplied argument.
+    /// Stores one bulk-string value under one bulk-string key.
+    ///
+    /// Returns an error reply if the arguments have the wrong shape.
     fn execute(&self, args: &[Value], storage: Option<&store::Store>) -> Result<Value> {
         let Some(storage) = storage else {
             return Ok(Value::Error("How's storage map none?!".into()));

@@ -5,6 +5,10 @@ use anyhow::{Error, Result};
 
 // ------------------------------------- Public (crate) API ------------------------------------- //
 
+/// The `GET` command.
+///
+/// Looks up a key and returns its value as a bulk string. If the key does not
+/// exist, it returns a null bulk string.
 pub(crate) struct Get;
 impl Command for Get {
     /// Returns the command's canonical name.
@@ -12,6 +16,9 @@ impl Command for Get {
         "get"
     }
 
+    /// Looks up one bulk-string key in the shared store.
+    ///
+    /// Returns an error reply if the arguments have the wrong shape.
     fn execute(&self, args: &[Value], storage: Option<&store::Store>) -> Result<Value> {
         let Some(storage) = storage else {
             return Ok(Value::Error("How's storage map none?!".into()));
