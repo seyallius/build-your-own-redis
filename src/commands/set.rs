@@ -19,15 +19,14 @@ impl Command for Set {
     /// Stores one bulk-string value under one bulk-string key.
     ///
     /// Returns an error reply if the arguments have the wrong shape.
-    fn execute(&self, args: &[Value], storage: Option<&store::Store>) -> Result<Value> {
-        let Some(storage) = storage else {
-            return Ok(Value::Error("How's storage map none?!".into()));
+    fn execute(&self, args: &[Value], store: Option<&store::Store>) -> Result<Value> {
+        let Some(store) = store else {
+            return Ok(Value::Error("How's store map none?!".into()));
         };
 
         match args {
             [Value::Bulk(Some(key)), Value::Bulk(Some(val))] => {
-                let mut storage = storage.map()?;
-                storage.insert(key.to_vec(), val.to_vec());
+                store.insert(key, val)?;
                 Ok(Value::Simple(String::from("OK")))
             }
             _ => Ok(Value::Error(
@@ -52,7 +51,7 @@ mod set_tests {
         let result = Set.execute(&[], None).unwrap();
 
         assert!(
-            matches!(result, Value::Error(ref message) if message == "How's storage map none?!")
+            matches!(result, Value::Error(ref message) if message == "How's store map none?!")
         );
     }
 
@@ -62,12 +61,11 @@ mod set_tests {
             Value::Bulk(Some(b"foo".to_vec())),
             Value::Bulk(Some(b"bar".to_vec())),
         ];
-        let storage = new_store();
-        let result = Set.execute(&args, Some(&storage)).unwrap();
+        let store = new_store();
+        let result = Set.execute(&args, Some(&store)).unwrap();
 
         assert!(matches!(result, Value::Simple(ref message) if message == "OK"));
-        let storage = storage.map().unwrap();
-        let stored_val = storage.get(b"foo".as_slice()).unwrap();
+        let stored_val = store.get(&b"foo".to_vec()).unwrap().unwrap();
         assert_eq!(stored_val, b"bar");
     }
 

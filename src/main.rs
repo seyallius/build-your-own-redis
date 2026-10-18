@@ -16,7 +16,11 @@
 use crate::store::Store;
 use anyhow::{Context, Result};
 use std::{
-    collections::HashMap, env, net::{Ipv4Addr, SocketAddrV4, TcpListener}, sync::{Arc, Mutex}, thread,
+    collections::HashMap,
+    env,
+    net::{Ipv4Addr, SocketAddrV4, TcpListener},
+    sync::{Arc, Mutex},
+    thread,
 };
 
 mod commands;
@@ -41,14 +45,14 @@ fn main() -> Result<()> {
     let listener =
         TcpListener::bind(address).with_context(|| format!("could not bind on {address}"))?;
 
-    let storage = Store::new();
+    let store = Store::new();
 
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
-                let storage = storage.clone();
+                let store = store.clone();
                 thread::spawn(move || {
-                    if let Err(e) = server::connection::handle(stream, &storage) {
+                    if let Err(e) = server::connection::handle(stream, &store) {
                         eprintln!("error handling client: {e:#}");
                     }
                 });

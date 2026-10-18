@@ -24,7 +24,7 @@ impl Command for CommandCmd {
     /// This lets redis-cli continue its startup when this server does not
     /// provide command metadata. It is a compatibility stub, not a full
     /// implementation of Redis' COMMAND command.
-    fn execute(&self, _args: &[Value], _storage: Option<&store::Store>) -> Result<Value> {
+    fn execute(&self, _args: &[Value], _store: Option<&store::Store>) -> Result<Value> {
         Ok(Value::Array(Vec::new()))
     }
 }

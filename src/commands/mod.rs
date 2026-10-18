@@ -47,7 +47,7 @@ pub(crate) trait Command: Send + Sync + 'static {
     fn name(&self) -> &'static str;
 
     /// Executes the command against the given arguments.
-    fn execute(&self, args: &[Value], storage: Option<&store::Store>) -> Result<Value>;
+    fn execute(&self, args: &[Value], store: Option<&store::Store>) -> Result<Value>;
 }
 
 /// Finds a command handler by its wire name.

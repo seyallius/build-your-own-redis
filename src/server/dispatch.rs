@@ -15,7 +15,7 @@ use std::{io::Write, net::TcpStream};
 ///
 /// The first array element is treated as the command name. Any remaining
 /// elements are passed to the selected command handler as arguments.
-pub(crate) fn dispatch(stream: &mut TcpStream, value: Value, storage: &store::Store) -> Result<()> {
+pub(crate) fn dispatch(stream: &mut TcpStream, value: Value, store: &store::Store) -> Result<()> {
     let items = match value {
         Value::Array(items) => items,
         _ => return reply_error(stream, "expected array"),
@@ -37,7 +37,7 @@ pub(crate) fn dispatch(stream: &mut TcpStream, value: Value, storage: &store::St
 
     let args = &items[1..];
     let reply = cmd
-        .execute(args, Some(&storage))
+        .execute(args, Some(&store))
         .with_context(|| format!("command '{}' failed", cmd.name()))?;
 
     write_value(stream, &reply)

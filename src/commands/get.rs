@@ -19,15 +19,14 @@ impl Command for Get {
     /// Looks up one bulk-string key in the shared store.
     ///
     /// Returns an error reply if the arguments have the wrong shape.
-    fn execute(&self, args: &[Value], storage: Option<&store::Store>) -> Result<Value> {
-        let Some(storage) = storage else {
-            return Ok(Value::Error("How's storage map none?!".into()));
+    fn execute(&self, args: &[Value], store: Option<&store::Store>) -> Result<Value> {
+        let Some(store) = store else {
+            return Ok(Value::Error("How's store map none?!".into()));
         };
 
         match args {
             [Value::Bulk(Some(key))] => {
-                let storage = storage.map()?;
-                if let Some(val) = storage.get(key) {
+                if let Some(val) = store.get(key)? {
                     return Ok(Value::Bulk(Some(val.clone())));
                 }
                 Ok(Value::Bulk(None))
@@ -54,39 +53,35 @@ mod get_tests {
         let result = Get.execute(&[], None).unwrap();
 
         assert!(
-            matches!(result, Value::Error(ref message) if message == "How's storage map none?!")
+            matches!(result, Value::Error(ref message) if message == "How's store map none?!")
         );
     }
 
     #[test]
     fn gets_simple_string_value() {
-        let storage = new_store();
-        let mut map = storage.map().unwrap();
-        map.insert(b"foo".to_vec(), b"bar".to_vec());
-        drop(map);
+        let store = new_store();
+        store.insert(&b"foo".to_vec(), &b"bar".to_vec()).unwrap();
 
         let args = [Value::Bulk(Some(b"foo".to_vec()))];
-        let result = Get.execute(&args, Some(&storage)).unwrap();
+        let result = Get.execute(&args, Some(&store)).unwrap();
 
         assert!(matches!(result, Value::Bulk(Some(value)) if value == b"bar"));
-        let map = storage.map().unwrap();
-        let stored_val = map.get(b"foo".as_slice()).unwrap();
+        let stored_val = store.get(&b"foo".to_vec()).unwrap().unwrap();
         assert_eq!(stored_val, b"bar");
     }
 
     #[test]
     fn returns_null_for_missing_key() {
-        let storage = new_store();
+        let store = new_store();
         let args = vec![Value::Bulk(Some(b"foo".to_vec()))];
-        let result = Get.execute(&args, Some(&storage)).unwrap();
+        let result = Get.execute(&args, Some(&store)).unwrap();
 
         assert!(
             matches!(result, Value::Bulk(None)),
             "expected null bulk, got {:?}",
             result
         );
-        let storage = storage.map().unwrap();
-        let stored_val = storage.get(b"foo".as_slice());
+        let stored_val = store.get(&b"foo".to_vec()).unwrap();
         assert!(stored_val.is_none(), "key shouldn't exist");
     }
 

@@ -19,7 +19,7 @@ impl Command for Ping {
     }
 
     /// Returns `PONG` with no argument, or echoes one supplied argument.
-    fn execute(&self, args: &[Value], _storage: Option<&store::Store>) -> Result<Value> {
+    fn execute(&self, args: &[Value], _store: Option<&store::Store>) -> Result<Value> {
         match args {
             [] => Ok(Value::Simple("PONG".to_string())),
             [Value::Bulk(Some(msg))] => Ok(Value::Bulk(Some(msg.clone()))),

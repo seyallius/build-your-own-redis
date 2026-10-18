@@ -1,4 +1,4 @@
-//! Shared in-memory storage for Redis keys and values.
+//! Shared in-memory store for Redis keys and values.
 //!
 //! Keys and values are kept as bytes so the store can hold binary data. The
 //! map is protected by a mutex and shared through an [`Arc`], allowing all
@@ -22,11 +22,11 @@ pub(crate) type Value = Vec<u8>;
 /// The actual in-memory map storing byte [`Key`] and byte [`Value`].
 pub(crate) type Map = HashMap<Key, Value>;
 
-/// A cloneable handle to shared, thread-safe in-memory storage.
+/// A cloneable handle to shared, thread-safe in-memory store.
 #[derive(Clone, Default)]
 pub(crate) struct Store {
     /// The shared, thread-safe map from keys to values.
-    map: Arc<Mutex<Map>>,
+    entries: Arc<Mutex<Map>>,
 }
 impl Store {
     /// Creates an empty store.
@@ -35,10 +35,31 @@ impl Store {
     }
 }
 impl Store {
-    /// Locks the store and returns a guard for accessing the map;
-    /// the lock is released when the guard is dropped.
-    pub(crate) fn map(&self) -> Result<MutexGuard<'_, Map>> {
-        self.map
+    // ------------------------------------- Public (crate) API ------------------------------------- //
+
+    /// Inserts or replaces the value associated with `key`.
+    ///
+    /// The key and value are copied into the store.
+    pub(crate) fn insert(&self, key: &Key, value: &Value) -> Result<()> {
+        let mut entries = self.lock_entries()?;
+        entries.insert(key.to_vec(), value.to_vec());
+        Ok(())
+    }
+
+    /// Returns a copy of the value associated with `key`, if it exists.
+    pub(crate) fn get(&self, key: &Key) -> Result<Option<Value>> {
+        let entries = self.lock_entries()?;
+        let value = entries.get(key);
+        Ok(value.cloned())
+    }
+
+    // -------------------------------------- Internal Helpers -------------------------------------- //
+
+    /// Locks the store and returns a guard for accessing its entries.
+    ///
+    /// The lock is released when the returned guard is dropped.
+    fn lock_entries(&self) -> Result<MutexGuard<'_, Map>> {
+        self.entries
             .lock()
             .map_err(|poison_error| Error::msg(poison_error.to_string()))
     }

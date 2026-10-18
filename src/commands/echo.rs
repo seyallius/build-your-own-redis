@@ -16,7 +16,7 @@ impl Command for Echo {
     /// Copies the argument bytes into the response value.
     ///
     /// The bytes stay binary-safe: they are not converted to UTF-8 text.
-    fn execute(&self, args: &[Value], _storage: Option<&store::Store>) -> Result<Value> {
+    fn execute(&self, args: &[Value], _store: Option<&store::Store>) -> Result<Value> {
         match args {
             [Value::Bulk(Some(msg))] => Ok(Value::Bulk(Some(msg.clone()))),
             _ => Ok(Value::Error(
