@@ -1,7 +1,7 @@
 //! Implementation of the `SET` command.
 
 use crate::{commands::Command, resp::parser::Value, store};
-use anyhow::Result;
+use anyhow::{Error, Result};
 
 // ------------------------------------- Public (crate) API ------------------------------------- //
 
@@ -26,8 +26,10 @@ impl Command for Set {
 
         match args {
             [Value::Bulk(Some(key)), Value::Bulk(Some(val))] => {
-                dbg!(str::from_utf8(key).expect("key what?"));
-                dbg!(str::from_utf8(val).expect("val what?"));
+                let mut storage = storage
+                    .lock()
+                    .map_err(|poison_error| Error::msg(poison_error.to_string()))?;
+                storage.insert(key.to_vec(), val.to_vec());
                 Ok(Value::Simple(String::from("OK")))
             }
             _ => Ok(Value::Error(
@@ -42,10 +44,10 @@ impl Command for Set {
 #[cfg(test)]
 mod set_tests {
     use super::*;
-    use std::collections::HashMap;
+    use std::{collections::HashMap, sync::Mutex};
 
     fn new_store() -> store::Store {
-        store::Store::new(HashMap::new())
+        store::Store::new(Mutex::new(HashMap::new()))
     }
 
     #[test]
@@ -63,9 +65,13 @@ mod set_tests {
             Value::Bulk(Some(b"foo".to_vec())),
             Value::Bulk(Some(b"bar".to_vec())),
         ];
-        let result = Set.execute(&args, Some(&new_store())).unwrap();
+        let storage = new_store();
+        let result = Set.execute(&args, Some(&storage)).unwrap();
 
         assert!(matches!(result, Value::Simple(ref message) if message == "OK"));
+        let storage = storage.lock().unwrap();
+        let stored_val = storage.get(b"foo".as_slice()).unwrap();
+        assert_eq!(stored_val, b"bar");
     }
 
     #[test]

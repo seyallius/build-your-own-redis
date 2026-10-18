@@ -23,7 +23,7 @@ pub(crate) mod set;
 ///
 /// Linear lookup is fine for the handful of commands this server implements;
 /// swap for a `HashMap` if the registry ever grows large.
-const REGISTRY: &[&dyn Command] = &[&ping::Ping, &echo::Echo, &command::CommandCmd];
+const REGISTRY: &[&dyn Command] = &[&ping::Ping, &echo::Echo, &command::CommandCmd, &set::Set];
 
 // ------------------------------------- Public (crate) API ------------------------------------- //
 
