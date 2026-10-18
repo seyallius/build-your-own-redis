@@ -11,11 +11,16 @@
 //!
 //! Nothing in [`crate::server`] needs to change.
 
-use crate::{resp::parser::Value, store};
+use crate::{
+    commands::{command::CommandCmd, echo::Echo, get::Get, ping::Ping, set::Set},
+    resp::parser::Value,
+    store,
+};
 use anyhow::Result;
 
 pub(crate) mod command;
 pub(crate) mod echo;
+pub(crate) mod get;
 pub(crate) mod ping;
 pub(crate) mod set;
 
@@ -23,7 +28,7 @@ pub(crate) mod set;
 ///
 /// Linear lookup is fine for the handful of commands this server implements;
 /// swap for a `HashMap` if the registry ever grows large.
-const REGISTRY: &[&dyn Command] = &[&ping::Ping, &echo::Echo, &command::CommandCmd, &set::Set];
+const REGISTRY: &[&dyn Command] = &[&Ping, &Echo, &CommandCmd, &Set, &Get];
 
 // ------------------------------------- Public (crate) API ------------------------------------- //
 
