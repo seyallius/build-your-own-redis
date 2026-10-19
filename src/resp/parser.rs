@@ -89,6 +89,47 @@ pub(crate) enum Value {
     Array(Vec<Value>),
 }
 impl Value {
+    // ------------------------------------- Public (crate) API ------------------------------------- //
+
+    /// Creates a non-null RESP bulk string from arbitrary bytes.
+    pub(crate) fn bulk(bytes: impl Into<Vec<u8>>) -> Self {
+        Self::Bulk(Some(bytes.into()))
+    }
+
+    /// Creates a null RESP bulk string.
+    pub(crate) fn null_bulk() -> Self {
+        Self::Bulk(None)
+    }
+
+    /// Creates a RESP simple string.
+    pub(crate) fn simple(text: impl Into<String>) -> Self {
+        Self::Simple(text.into())
+    }
+
+    /// Creates a RESP error.
+    pub(crate) fn error(message: impl Into<String>) -> Self {
+        Self::Error(message.into())
+    }
+
+    /// Returns the bytes of a non-null bulk string.
+    pub(crate) fn as_bulk(&self) -> Option<&[u8]> {
+        match self {
+            Self::Bulk(Some(bytes)) => Some(bytes),
+            _ => None,
+        }
+    }
+
+    /// Returns the owned bytes of a non-null bulk string.
+    pub(crate) fn into_bulk(self) -> Option<Vec<u8>> {
+        match self {
+            Self::Bulk(Some(bytes)) => Some(bytes),
+            _ => None,
+        }
+    }
+}
+impl Value {
+    // -------------------------------------- Internal Helpers -------------------------------------- //
+
     /// Renders bulk-string bytes: as a quoted string if valid UTF-8, otherwise
     /// as an escaped byte sequence so binary payloads remain readable.
     fn write_bulk(&self, f: &mut fmt::Formatter<'_>, bytes: &[u8]) -> fmt::Result {

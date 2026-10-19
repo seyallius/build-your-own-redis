@@ -24,17 +24,25 @@ impl Command for Get {
             return Ok(Value::Error("How's store map none?!".into()));
         };
 
-        match args {
-            [Value::Bulk(Some(key))] => {
-                if let Some(val) = store.get(key)? {
-                    return Ok(Value::Bulk(Some(val.clone())));
-                }
-                Ok(Value::Bulk(None))
-            }
-            _ => Ok(Value::Error(
-                "ERR wrong number of arguments for 'get' command".into(),
-            )),
-        }
+        let [key] = args else {
+            return Ok(Value::error(
+                "ERR wrong number of arguments for 'get' command",
+            ));
+        };
+
+        let Some(key) = key.as_bulk() else {
+            return Ok(Value::error("ERR invalid argument type"));
+        };
+
+        //optimize(allocation): However, your current `Store::get()` accepts `&Vec<u8>`,
+        // forcing an unnecessary allocation with `key.to_vec()`.
+        // I would eventually change that API to accept `&[u8]`, since `HashMap<Vec<u8>, Entry>`
+        // supports borrowed slice lookups.
+        let key = key.to_vec();
+        Ok(match store.get(&key)? {
+            Some(value) => Value::bulk(value),
+            None => Value::null_bulk(),
+        })
     }
 }
 
@@ -52,9 +60,7 @@ mod get_tests {
     fn returns_error_without_arguments() {
         let result = Get.execute(&[], None).unwrap();
 
-        assert!(
-            matches!(result, Value::Error(ref message) if message == "How's store map none?!")
-        );
+        assert!(matches!(result, Value::Error(ref message) if message == "How's store map none?!"));
     }
 
     #[test]

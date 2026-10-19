@@ -1,7 +1,7 @@
 //! Implementation of the `SET` command.
 
 use crate::{commands::Command, resp::parser::Value, store};
-use anyhow::Result;
+use anyhow::{Ok, Result};
 
 // ------------------------------------- Public (crate) API ------------------------------------- //
 
@@ -24,15 +24,24 @@ impl Command for Set {
             return Ok(Value::Error("How's store map none?!".into()));
         };
 
-        match args {
-            [Value::Bulk(Some(key)), Value::Bulk(Some(val))] => {
-                store.insert(key, val)?;
-                Ok(Value::Simple(String::from("OK")))
-            }
-            _ => Ok(Value::Error(
-                "ERR wrong number of arguments for 'set' command".into(),
-            )),
-        }
+        let [key, value] = args else {
+            return Ok(Value::error(
+                "ERR wrong number of arguments for 'set' command",
+            ));
+        };
+
+        let (Some(key), Some(value)) = (key.as_bulk(), value.as_bulk()) else {
+            return Ok(Value::error("ERR invalid argument type"));
+        };
+
+        //optimize(allocation): However, your current `Store::get()` accepts `&Vec<u8>`,
+        // forcing an unnecessary allocation with `key.to_vec()`.
+        // I would eventually change that API to accept `&[u8]`, since `HashMap<Vec<u8>, Entry>`
+        // supports borrowed slice lookups.
+        let key = key.to_vec();
+        let value = value.to_vec();
+        store.insert(&key, &value)?;
+        Ok(Value::simple("OK"))
     }
 }
 
@@ -50,9 +59,7 @@ mod set_tests {
     fn returns_error_without_arguments() {
         let result = Set.execute(&[], None).unwrap();
 
-        assert!(
-            matches!(result, Value::Error(ref message) if message == "How's store map none?!")
-        );
+        assert!(matches!(result, Value::Error(ref message) if message == "How's store map none?!"));
     }
 
     #[test]
