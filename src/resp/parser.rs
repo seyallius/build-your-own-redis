@@ -110,6 +110,9 @@ impl Value {
     pub(crate) fn error(message: impl Into<String>) -> Self {
         Self::Error(message.into())
     }
+}
+impl Value {
+    // ------------------------------------- Public (crate) API ------------------------------------- //
 
     /// Returns the bytes of a non-null bulk string.
     pub(crate) fn as_bulk(&self) -> Option<&[u8]> {

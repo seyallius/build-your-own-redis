@@ -34,12 +34,7 @@ impl Command for Get {
             return Ok(Value::error("ERR invalid argument type"));
         };
 
-        //optimize(allocation): However, your current `Store::get()` accepts `&Vec<u8>`,
-        // forcing an unnecessary allocation with `key.to_vec()`.
-        // I would eventually change that API to accept `&[u8]`, since `HashMap<Vec<u8>, Entry>`
-        // supports borrowed slice lookups.
-        let key = key.to_vec();
-        Ok(match store.get(&key)? {
+        Ok(match store.get(key)? {
             Some(value) => Value::bulk(value),
             None => Value::null_bulk(),
         })
@@ -66,9 +61,9 @@ mod get_tests {
     #[test]
     fn gets_simple_string_value() {
         let store = new_store();
-        store.insert(&b"foo".to_vec(), &b"bar".to_vec()).unwrap();
+        store.insert(b"foo", b"bar", None).unwrap();
 
-        let args = [Value::Bulk(Some(b"foo".to_vec()))];
+        let args = [Value::bulk(b"foo")];
         let result = Get.execute(&args, Some(&store)).unwrap();
 
         assert!(matches!(result, Value::Bulk(Some(value)) if value == b"bar"));
@@ -79,7 +74,7 @@ mod get_tests {
     #[test]
     fn returns_null_for_missing_key() {
         let store = new_store();
-        let args = vec![Value::Bulk(Some(b"foo".to_vec()))];
+        let args = vec![Value::bulk(b"foo")];
         let result = Get.execute(&args, Some(&store)).unwrap();
 
         assert!(
@@ -87,16 +82,16 @@ mod get_tests {
             "expected null bulk, got {:?}",
             result
         );
-        let stored_val = store.get(&b"foo".to_vec()).unwrap();
+        let stored_val = store.get(b"foo").unwrap();
         assert!(stored_val.is_none(), "key shouldn't exist");
     }
 
     #[test]
     fn returns_error_when_given_too_many_arguments() {
         let args = [
-            Value::Bulk(Some(b"first".to_vec())),
-            Value::Bulk(Some(b"second".to_vec())),
-            Value::Bulk(Some(b"third".to_vec())),
+            Value::bulk(b"first"),
+            Value::bulk(b"second"),
+            Value::bulk(b"third"),
         ];
 
         let result = Get.execute(&args, Some(&new_store())).unwrap();

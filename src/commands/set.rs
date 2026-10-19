@@ -1,7 +1,8 @@
 //! Implementation of the `SET` command.
 
 use crate::{commands::Command, resp::parser::Value, store};
-use anyhow::{Ok, Result};
+use anyhow::Result;
+use std::time::Duration;
 
 // ------------------------------------- Public (crate) API ------------------------------------- //
 
@@ -24,7 +25,7 @@ impl Command for Set {
             return Ok(Value::Error("How's store map none?!".into()));
         };
 
-        let [key, value] = args else {
+        let [key, value, options @ ..] = args else {
             return Ok(Value::error(
                 "ERR wrong number of arguments for 'set' command",
             ));
@@ -34,14 +35,40 @@ impl Command for Set {
             return Ok(Value::error("ERR invalid argument type"));
         };
 
-        //optimize(allocation): However, your current `Store::get()` accepts `&Vec<u8>`,
-        // forcing an unnecessary allocation with `key.to_vec()`.
-        // I would eventually change that API to accept `&[u8]`, since `HashMap<Vec<u8>, Entry>`
-        // supports borrowed slice lookups.
-        let key = key.to_vec();
-        let value = value.to_vec();
-        store.insert(&key, &value)?;
+        let expiration = match self.parse_expiration(options) {
+            Ok(expiration) => expiration,
+            Err(error) => return Ok(error),
+        };
+
+        store.insert(key, value, expiration)?;
         Ok(Value::simple("OK"))
+    }
+}
+impl Set {
+    // -------------------------------------- Internal Helpers -------------------------------------- //
+
+    /// Parses the optional PX expiration argument.
+    fn parse_expiration(&self, options: &[Value]) -> std::result::Result<Option<Duration>, Value> {
+        match options {
+            [] => Ok(None),
+
+            [option, milliseconds]
+                if option
+                    .as_bulk()
+                    .is_some_and(|bytes| bytes.eq_ignore_ascii_case(b"PX")) =>
+            {
+                let milliseconds = milliseconds
+                    .as_bulk()
+                    .and_then(|bytes| str::from_utf8(bytes).ok())
+                    .and_then(|text| text.parse::<u64>().ok())
+                    .filter(|&ms| ms > 0)
+                    .ok_or_else(|| Value::error("ERR invalid expire time in 'set' command"))?;
+
+                Ok(Some(Duration::from_millis(milliseconds)))
+            }
+
+            _ => Err(Value::error("ERR syntax error")),
+        }
     }
 }
 

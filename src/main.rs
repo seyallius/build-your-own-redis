@@ -16,10 +16,8 @@
 use crate::store::Store;
 use anyhow::{Context, Result};
 use std::{
-    collections::HashMap,
     env,
     net::{Ipv4Addr, SocketAddrV4, TcpListener},
-    sync::{Arc, Mutex},
     thread,
 };
 
